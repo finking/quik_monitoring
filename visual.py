@@ -4,7 +4,7 @@ import logging
 import plotly.graph_objs as go
 
 
-def visualize_kerry_year_interactive(shortname="LEAS-6.25"):
+def visualize_kerry_year_interactive(shortname="GAZR-9.25"):
     conn = sqlite3.connect("data/futures_spreads.db")
     df = pd.read_sql_query("SELECT trade_time, name_future, kerry_buy_spread_y, kerry_sell_spread_y "
                            "FROM spreads WHERE name_future = ?", conn,
@@ -21,13 +21,13 @@ def visualize_kerry_year_interactive(shortname="LEAS-6.25"):
     fig.add_trace(go.Scatter(
             x=df["trade_time"],
             y=df["kerry_sell_spread_y"],
-            name='Лучшая цена продажи спреда',
+            name='offer',
             line=dict(color='red'),
     ))
     fig.add_trace(go.Scatter(
         x=df["trade_time"],
         y=df["kerry_buy_spread_y"],
-        name='Лучшая цена покупки спреда',
+        name='bid',
         line=dict(color='green'),
     ))
 
