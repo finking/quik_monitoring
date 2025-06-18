@@ -195,3 +195,4 @@ cython_debug/
 
 # User's dir
 .data/
+/data/
