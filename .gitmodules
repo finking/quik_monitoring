@@ -1,0 +1,3 @@
+[submodule "QuikPy"]
+	path = QuikPy
+	url = https://github.com/cia76/QuikPy
