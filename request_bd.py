@@ -21,7 +21,7 @@ cursor.execute(
             FROM spreads
             GROUP BY name_share
         )
-        ORDER BY kerry_sell_spread_y DESC
+        ORDER BY kerry_buy_spread_y DESC
         LIMIT 5;
     '''
 )
@@ -32,11 +32,11 @@ headers = [description[0] for description in cursor.description]
 # Полученные данные
 rows = cursor.fetchall()
 
-
-if not rows:
+if rows:
+    logging.info(headers)
+    for row in rows:
+        logging.info(row)
+else:
     logging.info("Нет записей")
-
-for row in rows:
-    logging.info(row)
 
 conn.close()
