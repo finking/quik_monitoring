@@ -8,6 +8,7 @@ from QuikPy import QuikPy  # Работа с QUIK из Python через LUA с�
 FILE_PATH = "data/stocks_futures.csv"
 DB_PATH = "data/futures_spreads.db"
 
+DAYS_YEAR = 365 # дней в году
 
 # функция для создания бд
 def init_db(db_path):
@@ -29,20 +30,43 @@ def init_db(db_path):
             kerry_sell_spread_y REAL
         )
         ''')
+
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS future_spreads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trade_time TEXT,
+            near_future TEXT,
+            far_future TEXT,
+            spread_bid REAL,
+            spread_offer REAL,
+            spread_bid_y REAL,
+            spread_offer_y REAL,
+            far_exp_days INTEGER
+        )
+        ''')
         conn.commit()
 
 
 # Функция для сохранения данных в БД
-def save_to_db(cursor, data):
+def save_to_db(cursor, table_name, data):
+    if table_name == 'spreads':
+        cursor.execute('''
+        INSERT INTO spreads (
+            trade_time, name_share, bid_share, offer_share,
+            name_future, bid_future, offer_future,
+            lot_size_future, exp_days, kerry_buy_spread_y, kerry_sell_spread_y
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', data)
+    elif table_name == 'future_spreads':
+        cursor.execute('''
+        INSERT INTO future_spreads (
+            trade_time, near_future, far_future, spread_bid, 
+            spread_offer, spread_bid_y, spread_offer_y, far_exp_days
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', data)
+    else:
+        raise ValueError(f"Неизвестная таблица: {table_name}")
 
-    cursor.execute('''
-    INSERT INTO spreads (
-        trade_time, name_share, bid_share, offer_share,
-        name_future, bid_future, offer_future,
-        lot_size_future, exp_days, kerry_buy_spread_y, kerry_sell_spread_y
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', data)
-    conn.commit()
 
 # Функция получения Топ-5 по доходности продажи спреда
 def get_top_by_kerry_sell(db_path):
@@ -153,12 +177,12 @@ if __name__ == '__main__':  # Точка входа при запуске это
     logging.Formatter.converter = lambda *args: datetime.now(tz=qp_provider.tz_msk).timetuple()  # В логе время указываем по МСК
 
     # Проверяем, существует ли файл базы данных. Если нет, то создаем
-    if not os.path.exists(DB_PATH):
-        try:
-            init_db(DB_PATH)
-            logger.info(f'База данных создана в {DB_PATH}')
-        except Exception as e:
-            logger.error(f'Не удалось создать базу данных в {DB_PATH}. Ошибка: {e}')
+    # if not os.path.exists(DB_PATH):
+    try:
+        init_db(DB_PATH)
+        logger.info(f'База данных создана в {DB_PATH}')
+    except Exception as e:
+        logger.error(f'Не удалось создать базу данных в {DB_PATH}. Ошибка: {e}')
 
     # Формат короткого имени для фьючерсов: <Код тикера><Месяц экспирации: 3-H, 6-M, 9-U, 12-Z><Последняя цифра года>. Пример: SiU4, RIU4
     list_datanames = read_stock_futures_csv(FILE_PATH)
@@ -172,6 +196,10 @@ if __name__ == '__main__':  # Точка входа при запуске это
                 if not info_share:
                     break
                 name_share, _, _, bid_share, offer_share = info_share
+
+                # Список для данных по фчс
+                futures_data = []
+
                 for future in futures:
                     # получение данных для фчс
                     info_future = get_info(future)
@@ -201,7 +229,17 @@ if __name__ == '__main__':  # Точка входа при запуске это
                     logger.info(f"Керри покупки спреда между {name_share} и фьючерса {name_future} составляет {kerry_sell_spread }")
                     logger.info(f"Годовой Керри покупки спреда между {name_share} и фьючерса {name_future} составляет {kerry_sell_spread_y}")
 
-                    # Сохранение в БД
+                    # Добавляем в список для дальнейшего использования
+                    futures_data.append({
+                        'name_future': name_future,
+                        'exp_days': exp_days,
+                        'bid_future': bid_future,
+                        'offer_future': offer_future,
+                        'bid_share': bid_share * lot_size_future,
+                        'offer_share': offer_share * lot_size_future,
+                    })
+
+                    # Сохранение в таблицу spreads
                     data_to_save = (
                         datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
                         name_share,
@@ -215,8 +253,42 @@ if __name__ == '__main__':  # Точка входа при запуске это
                         kerry_buy_spread_y,
                         kerry_sell_spread_y
                     )
+                    save_to_db(cursor, 'spreads', data_to_save)
 
-                    # Запись в БД
-                    save_to_db(cursor, data_to_save)
+                # Обрабатываем пары фьючерсов
+                if len(futures_data) >= 2:
+                    sorted_futures = sorted(futures_data, key=lambda x: x['exp_days'])
+
+                    # Перебираем все возможные пары: ближний vs дальний
+                    for i in range(len(sorted_futures)):
+                        for j in range(i + 1, len(sorted_futures)):
+                            near = sorted_futures[i]
+                            far = sorted_futures[j]
+
+                            # Расчет спроса для спреда (по какой "цене" продать КС)
+                            spread_bid = far['bid_future'] - near['offer_future']
+                            # Пересчет в годовую доходность по формуле:
+                            # Доходность годовых = (спред / предложение акции с учетом лота) / кол-во дней до эксп дальнего фчс * кол-во дней * 100%
+                            spread_bid_y = (spread_bid / far['offer_share']) / far['exp_days'] * DAYS_YEAR * 100
+
+                            # Расчет предложения для спреда (по какой "цене" купить КС)
+                            spread_offer = far['offer_future'] - near['bid_future']
+                            # Доходность годовых = (спред / спрос акции с учетом лота) / кол-во дней до эксп дальнего фчс * кол-во дней * 100%
+                            spread_offer_y = (spread_offer / far['bid_share']) / far['exp_days'] * DAYS_YEAR * 100
+
+                            future_spread_data = (
+                                datetime.now().strftime('%d.%m.%Y %H:%M:%S'),
+                                near['name_future'],
+                                far['name_future'],
+                                spread_bid,
+                                spread_offer,
+                                round(spread_bid_y, 2),
+                                round(spread_offer_y, 2),
+                                far['exp_days']
+                            )
+
+                            save_to_db(cursor, 'future_spreads', future_spread_data)
+
+        conn.commit()
 
     qp_provider.close_connection_and_thread()  # Перед выходом закрываем соединение для запросов и поток обработки функций обратного вызова
