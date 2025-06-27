@@ -1,0 +1,85 @@
+/* assets/style.css */
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: #f9f9f9;
+    margin: 0;
+    padding: 0;
+}
+
+.main-container {
+    max-width: 1400px;
+    margin: auto;
+    padding: 20px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.header-title {
+    margin: 0;
+    font-size: 28px;
+    color: #333;
+}
+
+.header-subtitle {
+    font-size: 16px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.filters-container {
+    display: flex;
+    gap: 20px; /* Расстояние между элементами */
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 30px;
+}
+
+.input-label {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+/* Ограничиваем ширину dropdown-expiration */
+#dropdown-expiration .custom-dropdown {
+    max-width: 200px;
+}
+
+/* Увеличиваем ширину dropdown-sort-by */
+#dropdown-sort-by .custom-dropdown {
+    min-width: 310px;
+    white-space: nowrap;
+}
+
+.graphs-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.plotly-graph-div {
+    background-color: #fff !important;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+
+/* Таблица */
+.table-container {
+    margin-bottom: 30px;
+}
+
+.section-title {
+    font-size: 20px;
+    margin-bottom: 10px;
+    color: #333;
+}
