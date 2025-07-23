@@ -1,0 +1,5 @@
+dash==3.0.4
+pandas==2.0.3
+plotly==6.1.2
+pytz==2025.2
+pipreqs==0.5.0
