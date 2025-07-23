@@ -268,7 +268,7 @@ def render_content(tab):
             html.H3("Спреды между акцией и фьючерсом", className="header-title"),
 
             html.Div([
-                html.Label("Фьючерс"),
+                html.Label("Фьючерс", className="input-label"),
                 dcc.Dropdown(
                     id='dropdown-future',
                     options=[{'label': f, 'value': f} for f in get_all_futures()],
@@ -287,7 +287,7 @@ def render_content(tab):
                     style={'width': '100%', 'maxWidth': '300px'}
                 ),
 
-                html.Label("Сортировать по"),
+                html.Label("Сортировать по", className="input-label"),
                 dcc.Dropdown(
                     id='dropdown-sort-by',
                     options=[
@@ -299,22 +299,19 @@ def render_content(tab):
                     style={'width': '100%', 'maxWidth': '300px'}
                 ),
                 
-                html.Label("Мин. Buy Spread (%)"),
+                html.Label("Мин. Buy Spread (%)", className="input-label"),
                 dcc.Input(
                     id='input-min-buy-spread',
                     type='number',
                     value=0.0,
                     step=0.1,
-                    style={'height': '25px', 'maxWidth': '40px'},
-                    # className="input-number"
                 ),
-                html.Label("Макс. Buy Spread (%)"),
+                html.Label("Макс. Buy Spread (%)", className="input-label"),
                 dcc.Input(
                     id='input-max-buy-spread',
                     type='number',
                     value=100.0,
                     step=0.1,
-                    style={'height': '25px', 'maxWidth': '40px'},
                 )
             ], style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'margin-bottom': '20px'}),
 

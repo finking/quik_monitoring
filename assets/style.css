@@ -7,6 +7,10 @@ body {
     padding: 0;
 }
 
+#_dash-app-content {
+    margin: 20px;
+}
+
 .main-container {
     max-width: 1400px;
     margin: auto;
@@ -22,7 +26,8 @@ body {
 }
 
 .header-title {
-    margin: 0;
+    text-align: center;
+    margin: 10px;
     font-size: 28px;
     color: #333;
 }
@@ -57,6 +62,14 @@ body {
 #dropdown-sort-by .custom-dropdown {
     min-width: 310px;
     white-space: nowrap;
+}
+
+#input-min-buy-spread, #input-max-buy-spread {
+    height: 33px;
+    max-width: 40px;
+    text-align: center;
+    border-radius: 4px;
+    border: 1px solid #ccc;
 }
 
 .graphs-container {
