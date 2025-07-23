@@ -1,10 +1,9 @@
 import dash
 from dash import html, dcc, dash_table
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output
 import sqlite3
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
 
 # Путь до базы данных
 DB_PATH = "data/futures_spreads.db"
@@ -55,6 +54,14 @@ def get_unique_future_expirations():
 
     expirations = df['far_future'].str.extract(r'-(\d+\.\d+)')[0].dropna().unique()
     return sorted(expirations)
+
+
+def get_all_futures():
+    """Получаем все уникальные значения name_future из таблицы spreads"""
+    conn = sqlite3.connect("data/futures_spreads.db")
+    df = pd.read_sql_query("SELECT DISTINCT name_future FROM spreads ORDER BY name_future", conn)
+    conn.close()
+    return df["name_future"].dropna().tolist()
 
 
 def load_future_spreads(expiration_list=None):
@@ -261,6 +268,16 @@ def render_content(tab):
             html.H3("Спреды между акцией и фьючерсом", className="header-title"),
 
             html.Div([
+                html.Label("Фьючерс"),
+                dcc.Dropdown(
+                    id='dropdown-future',
+                    options=[{'label': f, 'value': f} for f in get_all_futures()],
+                    value=None,  # По умолчанию — все фьючерсы
+                    multi=True,
+                    placeholder="Все фьючерсы",
+                    style={'width': '100%', 'maxWidth': '160px'}
+                ),
+                
                 html.Label("Экспирация", className="input-label"),
                 dcc.Dropdown(
                     id='dropdown-expiration',
@@ -280,6 +297,24 @@ def render_content(tab):
                     value='kerry_buy_spread_y',
                     clearable=False,
                     style={'width': '100%', 'maxWidth': '300px'}
+                ),
+                
+                html.Label("Мин. Buy Spread (%)"),
+                dcc.Input(
+                    id='input-min-buy-spread',
+                    type='number',
+                    value=0.0,
+                    step=0.1,
+                    style={'height': '25px', 'maxWidth': '40px'},
+                    # className="input-number"
+                ),
+                html.Label("Макс. Buy Spread (%)"),
+                dcc.Input(
+                    id='input-max-buy-spread',
+                    type='number',
+                    value=100.0,
+                    step=0.1,
+                    style={'height': '25px', 'maxWidth': '40px'},
                 )
             ], style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'margin-bottom': '20px'}),
 
@@ -326,10 +361,13 @@ def render_content(tab):
 @app.callback(
     [Output('graphs-container', 'children'),
      Output('table-container', 'children')],
-    [Input('dropdown-expiration', 'value'),
-     Input('dropdown-sort-by', 'value')]
+    [Input('dropdown-future', 'value'),
+     Input('dropdown-expiration', 'value'),
+     Input('dropdown-sort-by', 'value'),
+     Input('input-min-buy-spread', 'value'),
+     Input('input-max-buy-spread', 'value')]
 )
-def update_spreads(expiration_list, sort_by):
+def update_spreads(selected_futures, expiration_list, sort_by, min_buy_spread, max_buy_spread):
     df_full = load_data(expiration_list)
 
     if df_full.empty:
@@ -337,12 +375,30 @@ def update_spreads(expiration_list, sort_by):
             html.Div("Нет данных для отображения графиков", style={"textAlign": "center"}),
             html.Div("Нет данных для отображения таблицы", style={"textAlign": "center"})
         ]
+    
+    # Фильтр по конкретным фьючерсам (если выбраны)
+    if selected_futures:
+        df_full = df_full[df_full['name_future'].isin(selected_futures)]
+    
+    # Фильтр по диапазону kerry_buy_spread_y
+    min_buy = min_buy_spread or 0.0
+    max_buy = max_buy_spread or 100.0
+    df_filtered = df_full[
+        (df_full['kerry_buy_spread_y'] >= min_buy) &
+        (df_full['kerry_buy_spread_y'] <= max_buy)
+    ]
+
+    if df_filtered.empty:
+        return [
+            html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"}),
+            html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"})
+        ]
 
     # Получаем самые свежие значения
-    df_last = df_full.sort_values('trade_time').drop_duplicates('name_future', keep='last')
+    df_last = df_filtered.sort_values('trade_time').drop_duplicates('name_future', keep='last')
 
     # Графики
-    graphs = create_spread_graphs(df_full, sort_by)
+    graphs = create_spread_graphs(df_filtered, sort_by)
 
     # Таблица
     table = create_current_spreads_table(df_last)
