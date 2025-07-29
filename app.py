@@ -1,9 +1,16 @@
-import dash
-from dash import html, dcc, dash_table
-from dash.dependencies import Input, Output
+from dash import html, dcc, dash_table, Dash
+from dash.dependencies import Input, Output, State
+import logging
 import sqlite3
 import pandas as pd
 import plotly.graph_objects as go
+
+logger = logging.getLogger('app.py')
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат сообщения
+                    datefmt='%d.%m.%Y %H:%M:%S',  # Формат даты
+                    level=logging.DEBUG,  # Уровень логируемых событий NOTSET/DEBUG/INFO/WARNING/ERROR/CRITICAL
+                    handlers=[logging.FileHandler('app_logs.log', encoding='utf-8'),
+                              logging.StreamHandler()])  # Лог записываем в файл и выводим на консоль
 
 # Путь до базы данных
 DB_PATH = "data/futures_spreads.db"
@@ -88,16 +95,22 @@ def load_future_spreads(expiration_list=None):
 
 # === Визуализация графиков и таблиц для spreads ===
 
-def create_spread_graphs(df, sort_by='kerry_buy_spread_y'):
+def create_spread_graphs(df_full, futures_on_page):
+    """Создаем графики только для указанных фьючерсов"""
     graphs = []
-    latest_df = df.drop_duplicates('name_future', keep='last').sort_values(sort_by, ascending=False)
 
-    # Список фьючерсов в нужном порядке
-    sorted_futures = latest_df['name_future'].tolist()
+    # Получаем последние значения только для фьючерсов на текущей странице
+    df_last_page = df_full[
+        df_full['name_future'].isin(futures_on_page)
+    ].sort_values('trade_time').drop_duplicates('name_future', keep='last')
 
-    for future_name in sorted_futures:
-        group = df[df['name_future'] == future_name]
-        row = latest_df[latest_df['name_future'] == future_name].iloc[0]
+    # Сортируем в том же порядке, что и в таблице
+    df_last_page = df_last_page.set_index('name_future').reindex(futures_on_page).reset_index()
+
+    for _, row in df_last_page.iterrows():
+        future_name = row['name_future']
+        # Получаем все данные для этого фьючерса
+        group = df_full[df_full['name_future'] == future_name]
         buy = row['kerry_buy_spread_y']
         sell = row['kerry_sell_spread_y']
     
@@ -148,13 +161,16 @@ def create_current_spreads_table(df_last):
     }).round(2)
 
     table = dash_table.DataTable(
+        id='spreads-data-table',  # ID для отслеживания страниц
         data=current_df.to_dict('records'),
         columns=[{'name': col, 'id': col} for col in current_df.columns],
         sort_action='native',
         sort_by=[{'column_id': 'Buy Spread (%)', 'direction': 'desc'}],
         style_table={'overflowX': 'auto'},
         style_cell={'minWidth': '100px', 'width': '150px', 'maxWidth': '300px', 'textAlign': 'center'},
-        page_size=10
+        page_size=10,  # Показываем по 10 записей на странице
+        page_current=0,  # Начинаем с первой страницы
+        page_action='native'  # Включаем пагинацию
     )
 
     return html.Div([
@@ -242,7 +258,7 @@ def create_current_future_spreads_table(df_last):
 
 # === Основной интерфейс Dash ===
 
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
+app = Dash(__name__, suppress_callback_exceptions=True)
 
 app.layout = html.Div([
     html.H2("Мониторинг спредов", style={"textAlign": "center"}),
@@ -353,23 +369,28 @@ def render_content(tab):
     return html.Div("Неизвестная вкладка")
 
 
-# === Callback для первой вкладки (spreads) ===
-
+# === Callback'и для первой вкладки (spreads) ===
+# --- Первый Callback: Обновление Таблицы ---
 @app.callback(
-    [Output('graphs-container', 'children'),
-     Output('table-container', 'children')],
+    [Output('table-container', 'children')],
     [Input('dropdown-future', 'value'),
      Input('dropdown-expiration', 'value'),
      Input('dropdown-sort-by', 'value'),
      Input('input-min-buy-spread', 'value'),
      Input('input-max-buy-spread', 'value')]
 )
-def update_spreads(selected_futures, expiration_list, sort_by, min_buy_spread, max_buy_spread):
+def update_table(selected_futures,
+                 expiration_list,
+                 sort_by,
+                 min_buy_spread,
+                 max_buy_spread):
+    logger.debug("Update_table called")
+    
+    # --- Начало логики фильтрации ---
     df_full = load_data(expiration_list)
 
     if df_full.empty:
         return [
-            html.Div("Нет данных для отображения графиков", style={"textAlign": "center"}),
             html.Div("Нет данных для отображения таблицы", style={"textAlign": "center"})
         ]
     
@@ -388,20 +409,84 @@ def update_spreads(selected_futures, expiration_list, sort_by, min_buy_spread, m
     if df_filtered.empty:
         return [
             html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"}),
-            html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"})
         ]
-
-    # Получаем самые свежие значения
+    # --- Конец логики фильтрации ---
+    
+    # --- Получение последних значений и сортировка для таблицы ---
     df_last = df_filtered.sort_values('trade_time').drop_duplicates('name_future', keep='last')
+    df_last_sorted = df_last.sort_values(by=sort_by, ascending=False)
+    # --- Конец получения и сортировки ---
+    
+    # --- Создание таблицы (всегда передаем полные отсортированные данные) ---
+    table = create_current_spreads_table(df_last_sorted)
+    # --- Конец создания таблицы ---
+    logger.debug("Table component created and returned")
 
-    # Графики
-    graphs = create_spread_graphs(df_filtered, sort_by)
+    return table,  # Необходимо возвращать итерируемую коллекцию
 
-    # Таблица
-    table = create_current_spreads_table(df_last)
 
-    return graphs, table
+# --- Второй Callback: Обновление Графиков ---
+@app.callback(
+    Output('graphs-container', 'children'),
+    [Input('spreads-data-table', 'page_current'),
+     Input('spreads-data-table', 'page_size')],
+    [State('dropdown-future', 'value'),
+     State('dropdown-expiration', 'value'),
+     State('dropdown-sort-by', 'value'),
+     State('input-min-buy-spread', 'value'),
+     State('input-max-buy-spread', 'value')]
+)
+def update_graphs(page_current, page_size, selected_futures, expiration_list, sort_by, min_buy_spread, max_buy_spread):
+    logger.debug(f"Update_graphs called with page_current={page_current}, page_size={page_size}")
+    
+    # Обработка значений по умолчанию для пагинации
+    page_current = page_current if page_current is not None else 0
+    page_size = page_size if page_size is not None else 10
+    
+    # --- Повторная логика фильтрации (можно оптимизировать, например, через кэширование или dcc.Store) ---
+    df_full = load_data(expiration_list)
+    if df_full.empty:
+        return html.Div("Нет данных для графиков", style={"textAlign": "center"})
 
+    # Фильтр по конкретным фьючерсам (если выбраны)
+    if selected_futures:
+        df_full = df_full[df_full['name_future'].isin(selected_futures)]
+       
+    # Фильтр по диапазону kerry_buy_spread_y
+    min_buy = min_buy_spread or 0.0
+    max_buy = max_buy_spread or 100.0
+    df_filtered = df_full[
+        (df_full['kerry_buy_spread_y'] >= min_buy) &
+        (df_full['kerry_buy_spread_y'] <= max_buy)
+    ]
+
+    if df_filtered.empty:
+        return [
+            html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"}),
+        ]
+    # --- Конец логики фильтрации ---
+
+    # --- Получаем последние значения и сортировку для определения фьючерсов на странице ---
+    df_last = df_filtered.sort_values('trade_time').drop_duplicates('name_future', keep='last')
+    df_last_sorted = df_last.sort_values(by=sort_by, ascending=False)
+    # --- Конец получения и сортировки ---
+    
+    # --- Определяем фьючерсы для текущей страницы ---
+    start_idx = page_current * page_size
+    end_idx = start_idx + page_size
+    df_page = df_last_sorted.iloc[start_idx:end_idx]
+    futures_on_page = df_page['name_future'].tolist()
+    logger.debug(f"Futures for graphs on page {page_current}: {futures_on_page}")
+    # --- Конец определения фьючерсов ---
+    
+    # --- Создаем графики ---
+    if not futures_on_page:
+        return html.Div("Нет данных для отображения на этой странице", style={"textAlign": "center"})
+    
+    graphs = create_spread_graphs(df_filtered, futures_on_page)
+    logger.debug(f"Graphs created and returned")
+    return graphs
+    # --- Конец создания графиков ---
 
 # === Callback для второй вкладки (future_spreads) ===
 
