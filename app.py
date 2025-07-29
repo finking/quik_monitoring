@@ -330,7 +330,11 @@ def render_content(tab):
                     step=0.1,
                 )
             ], style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'margin-bottom': '20px'}),
-
+    
+            # Хранилище для кэширования данных
+            dcc.Store(id='stored-filtered-data'),
+            dcc.Store(id='stored-sorted-data'),
+            
             html.Div(id='table-container'),
             html.Div(id='graphs-container')
         ])
@@ -372,7 +376,9 @@ def render_content(tab):
 # === Callback'и для первой вкладки (spreads) ===
 # --- Первый Callback: Обновление Таблицы ---
 @app.callback(
-    [Output('table-container', 'children')],
+    [Output('table-container', 'children'),
+     Output('stored-filtered-data', 'data'),  # Кэшируем отфильтрованные данные
+     Output('stored-sorted-data', 'data')],  # Кэшируем отсортированные данные
     [Input('dropdown-future', 'value'),
      Input('dropdown-expiration', 'value'),
      Input('dropdown-sort-by', 'value'),
@@ -390,9 +396,8 @@ def update_table(selected_futures,
     df_full = load_data(expiration_list)
 
     if df_full.empty:
-        return [
-            html.Div("Нет данных для отображения таблицы", style={"textAlign": "center"})
-        ]
+        empty_result = html.Div("Нет данных для отображения таблицы", style={"textAlign": "center"})
+        return empty_result, None, None
     
     # Фильтр по конкретным фьючерсам (если выбраны)
     if selected_futures:
@@ -407,9 +412,8 @@ def update_table(selected_futures,
     ]
 
     if df_filtered.empty:
-        return [
-            html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"}),
-        ]
+        empty_result = html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"})
+        return empty_result, None, None
     # --- Конец логики фильтрации ---
     
     # --- Получение последних значений и сортировка для таблицы ---
@@ -421,8 +425,12 @@ def update_table(selected_futures,
     table = create_current_spreads_table(df_last_sorted)
     # --- Конец создания таблицы ---
     logger.debug("Table component created and returned")
+    
+    # Конвертируем DataFrame в JSON для хранения
+    filtered_json = df_filtered.to_json(date_format='iso', orient='split')
+    sorted_json = df_last_sorted.to_json(date_format='iso', orient='split')
 
-    return table,  # Необходимо возвращать итерируемую коллекцию
+    return table, filtered_json, sorted_json
 
 
 # --- Второй Callback: Обновление Графиков ---
@@ -430,61 +438,41 @@ def update_table(selected_futures,
     Output('graphs-container', 'children'),
     [Input('spreads-data-table', 'page_current'),
      Input('spreads-data-table', 'page_size')],
-    [State('dropdown-future', 'value'),
-     State('dropdown-expiration', 'value'),
-     State('dropdown-sort-by', 'value'),
-     State('input-min-buy-spread', 'value'),
-     State('input-max-buy-spread', 'value')]
+    [State('stored-filtered-data', 'data'),   # Получаем закэшированные данные
+     State('stored-sorted-data', 'data')]
 )
-def update_graphs(page_current, page_size, selected_futures, expiration_list, sort_by, min_buy_spread, max_buy_spread):
+def update_graphs(page_current, page_size, filtered_json, sorted_json):
     logger.debug(f"Update_graphs called with page_current={page_current}, page_size={page_size}")
+
+    # Проверяем, есть ли закэшированные данные
+    if filtered_json is None or sorted_json is None:
+        return html.Div("Нет данных для графиков", style={"textAlign": "center"})
+
+    # Восстанавливаем DataFrame из JSON
+    try:
+        df_filtered = pd.read_json(filtered_json, orient='split')
+        df_last_sorted = pd.read_json(sorted_json, orient='split')
+    except Exception as e:
+        print(f"[ERROR] Failed to restore data from JSON: {e}")
+        return html.Div("Ошибка при загрузке данных", style={"textAlign": "center"})
     
     # Обработка значений по умолчанию для пагинации
     page_current = page_current if page_current is not None else 0
     page_size = page_size if page_size is not None else 10
     
-    # --- Повторная логика фильтрации (можно оптимизировать, например, через кэширование или dcc.Store) ---
-    df_full = load_data(expiration_list)
-    if df_full.empty:
-        return html.Div("Нет данных для графиков", style={"textAlign": "center"})
-
-    # Фильтр по конкретным фьючерсам (если выбраны)
-    if selected_futures:
-        df_full = df_full[df_full['name_future'].isin(selected_futures)]
-       
-    # Фильтр по диапазону kerry_buy_spread_y
-    min_buy = min_buy_spread or 0.0
-    max_buy = max_buy_spread or 100.0
-    df_filtered = df_full[
-        (df_full['kerry_buy_spread_y'] >= min_buy) &
-        (df_full['kerry_buy_spread_y'] <= max_buy)
-    ]
-
-    if df_filtered.empty:
-        return [
-            html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"}),
-        ]
-    # --- Конец логики фильтрации ---
-
-    # --- Получаем последние значения и сортировку для определения фьючерсов на странице ---
-    df_last = df_filtered.sort_values('trade_time').drop_duplicates('name_future', keep='last')
-    df_last_sorted = df_last.sort_values(by=sort_by, ascending=False)
-    # --- Конец получения и сортировки ---
-    
-    # --- Определяем фьючерсы для текущей страницы ---
+    # Определяем фьючерсы для текущей страницы
     start_idx = page_current * page_size
     end_idx = start_idx + page_size
     df_page = df_last_sorted.iloc[start_idx:end_idx]
     futures_on_page = df_page['name_future'].tolist()
-    logger.debug(f"Futures for graphs on page {page_current}: {futures_on_page}")
-    # --- Конец определения фьючерсов ---
-    
-    # --- Создаем графики ---
+    print(f"[DEBUG] Futures for graphs on page {page_current}: {futures_on_page}")
+
+    # Создаем графики
     if not futures_on_page:
         return html.Div("Нет данных для отображения на этой странице", style={"textAlign": "center"})
-    
+
     graphs = create_spread_graphs(df_filtered, futures_on_page)
-    logger.debug(f"Graphs created and returned")
+    print(f"[DEBUG] Graphs created and returned")
     return graphs
     # --- Конец создания графиков ---
 
