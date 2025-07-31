@@ -450,14 +450,35 @@ def update_table(selected_futures,
     # Фильтр по конкретным фьючерсам (если выбраны)
     if selected_futures:
         df_full = df_full[df_full['name_future'].isin(selected_futures)]
-    
-    # Фильтр по диапазону kerry_buy_spread_y
-    min_buy = min_buy_spread or 0.0
-    max_buy = max_buy_spread or 100.0
-    df_filtered = df_full[
-        (df_full['kerry_buy_spread_y'] >= min_buy) &
-        (df_full['kerry_buy_spread_y'] <= max_buy)
-    ]
+
+        # Сначала получаем последние значения для каждого фьючерса
+    df_last = df_full.sort_values('trade_time').drop_duplicates('name_future', keep='last')
+
+    # Затем применяем фильтр по диапазону kerry_buy_spread_y к ПОСЛЕДНИМ значениям
+    try:
+        min_val = float(min_buy_spread) if min_buy_spread not in (None, '') else -float('inf')
+    except (ValueError, TypeError):
+        min_val = -float('inf')
+
+    try:
+        max_val = float(max_buy_spread) if max_buy_spread not in (None, '') else float('inf')
+    except (ValueError, TypeError):
+        max_val = float('inf')
+
+    # Фильтруем последние значения
+    df_last_filtered = df_last[
+        (df_last['kerry_buy_spread_y'] >= min_val) &
+        (df_last['kerry_buy_spread_y'] <= max_val)
+        ]
+
+    # Получаем список фьючерсов, которые прошли фильтр по последним значениям
+    valid_futures = df_last_filtered['name_future'].tolist()
+
+    # Фильтруем полный датафрейм, оставляя только данные по этим фьючерсам
+    if valid_futures:
+        df_filtered = df_full[df_full['name_future'].isin(valid_futures)]
+    else:
+        df_filtered = pd.DataFrame()  # Пустой датафрейм если нет подходящих фьючерсов
 
     if df_filtered.empty:
         empty_result = html.Div("Нет данных, удовлетворяющих фильтру", style={"textAlign": "center"})
