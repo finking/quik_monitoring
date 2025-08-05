@@ -344,7 +344,6 @@ def render_content(tab):
                     options=[{'label': f"{exp}", 'value': exp} for exp in get_unique_expirations()],
                     value=LIST_EXPIRATIONS,
                     multi=True,
-                    style={'width': '100%', 'maxWidth': '300px'}
                 ),
 
                 html.Label("Сортировать по", className="input-label"),
@@ -356,7 +355,7 @@ def render_content(tab):
                     ],
                     value='kerry_buy_spread_y',
                     clearable=False,
-                    style={'width': '100%', 'maxWidth': '300px'}
+                    style={'width': '100%', 'maxWidth': '310px', 'whiteSpace': 'nowrap'}
                 ),
                 
                 html.Label("Мин. Buy Spread (%)", className="input-label"),
@@ -394,7 +393,6 @@ def render_content(tab):
                     options=[{'label': f"{exp}", 'value': exp} for exp in get_unique_future_expirations()],
                     value=LIST_EXPIRATIONS,
                     multi=True,
-                    style={'width': '100%', 'maxWidth': '300px'}
                 ),
 
                 html.Label("Сортировка"),
@@ -406,7 +404,6 @@ def render_content(tab):
                     ],
                     value='spread_bid_y',
                     clearable=False,
-                    style={'width': '100%', 'maxWidth': '300px'}
                 )
             ], style={'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px', 'margin-bottom': '20px'}),
 
