@@ -119,17 +119,17 @@ def create_spread_graphs(df_full, futures_on_page):
             x=group['trade_time'],
             y=group['kerry_buy_spread_y'],
             mode='lines+markers',
-            name='Buy Spread',
+            name='Спрос',
             line=dict(color='green'),
-            hovertemplate="Дата: %{x}<br>Buy спред: %{y:.2f}%<extra></extra>"
+            hovertemplate="Дата: %{x}<br>Продать спред: %{y:.2f}%<extra></extra>"
         ))
         fig.add_trace(go.Scatter(
             x=group['trade_time'],
             y=group['kerry_sell_spread_y'],
             mode='lines+markers',
-            name='Sell Spread',
+            name='Предложение',
             line=dict(color='red'),
-            hovertemplate="Дата: %{x}<br>Sell спред: %{y:.2f}%<extra></extra>"
+            hovertemplate="Дата: %{x}<br>Купить спред: %{y:.2f}%<extra></extra>"
         ))
     
         fig.update_layout(
@@ -155,8 +155,8 @@ def create_current_spreads_table(df_last):
     current_df['trade_time'] = current_df['trade_time'].dt.strftime('%d.%m.%Y')
     current_df = current_df.rename(columns={
         'name_future': 'Фьючерс',
-        'kerry_buy_spread_y': 'Buy Spread (%)',
-        'kerry_sell_spread_y': 'Sell Spread (%)',
+        'kerry_buy_spread_y': 'Спрос (%)',
+        'kerry_sell_spread_y': 'Предложение (%)',
         'trade_time': 'Обновлено'
     }).round(2)
 
@@ -165,7 +165,6 @@ def create_current_spreads_table(df_last):
         data=current_df.to_dict('records'),
         columns=[{'name': col, 'id': col} for col in current_df.columns],
         sort_action='native',
-        sort_by=[{'column_id': 'Buy Spread (%)', 'direction': 'desc'}],
         style_table={'overflowX': 'auto'},
         style_cell={'minWidth': '100px', 'width': '150px', 'maxWidth': '300px', 'textAlign': 'center'},
         page_size=10,  # Показываем по 10 записей на странице
@@ -231,18 +230,18 @@ def create_future_spread_graphs(df_full, df_page):
             x=pair_df['trade_time'],
             y=pair_df['spread_bid_y'],
             mode='lines+markers',
-            name='Buy Spread',
+            name='Спрос',
             line=dict(color='green'),
-            hovertemplate="Дата: %{x}<br>Buy: %{y:.2f}%<extra></extra>"
+            hovertemplate="Дата: %{x}<br>Продать спред: %{y:.2f}%<extra></extra>"
         ))
         
         fig.add_trace(go.Scatter(
             x=pair_df['trade_time'],
             y=pair_df['spread_offer_y'],
             mode='lines+markers',
-            name='Sell Spread',
+            name='Предложение',
             line=dict(color='red'),
-            hovertemplate="Дата: %{x}<br>Sell:  %{y:.2f}%<extra></extra>"
+            hovertemplate="Дата: %{x}<br>Купить спред:  %{y:.2f}%<extra></extra>"
         ))
     
         fig.update_layout(
@@ -276,8 +275,8 @@ def create_current_future_spreads_table(df_last_sorted):
     current_df = current_df.rename(columns={
         'near_future': 'Ближний фьючерс',
         'far_future': 'Дальний фьючерс',
-        'spread_bid_y': 'Buy Spread (%)',
-        'spread_offer_y': 'Sell Spread (%)',
+        'spread_bid_y': 'Спрос (%)',
+        'spread_offer_y': 'Предложение (%)',
         'trade_time': 'Обновлено'
     }).round(2)
 
@@ -286,7 +285,6 @@ def create_current_future_spreads_table(df_last_sorted):
         data=current_df.to_dict('records'),
         columns=[{'name': col, 'id': col} for col in current_df.columns],
         sort_action='native',
-        sort_by=[{'column_id': 'Buy Spread (%)', 'direction': 'desc'}],
         style_table={'overflowX': 'auto'},
         style_cell={'minWidth': '100px', 'width': '150px', 'maxWidth': '300px', 'textAlign': 'center'},
         page_size=10,  # Показываем по 10 записей на странице
@@ -358,14 +356,14 @@ def render_content(tab):
                     style={'width': '100%', 'maxWidth': '310px', 'whiteSpace': 'nowrap'}
                 ),
                 
-                html.Label("Мин. Buy Spread (%)", className="input-label"),
+                html.Label("Мин. Спрос (%)", className="input-label"),
                 dcc.Input(
                     id='input-min-buy-spread',
                     type='number',
                     value=0.0,
                     step=0.1,
                 ),
-                html.Label("Макс. Buy Spread (%)", className="input-label"),
+                html.Label("Макс. Спрос (%)", className="input-label"),
                 dcc.Input(
                     id='input-max-buy-spread',
                     type='number',
@@ -490,7 +488,7 @@ def update_table(selected_futures,
     # --- Создание таблицы (всегда передаем полные отсортированные данные) ---
     table = create_current_spreads_table(df_last_sorted)
     # --- Конец создания таблицы ---
-    logger.debug("Table component created and returned")
+    logger.debug(f"Table component created and returned by {sort_by}")
     
     # Конвертируем DataFrame в JSON для хранения
     filtered_json = df_filtered.to_json(date_format='iso', orient='split')
